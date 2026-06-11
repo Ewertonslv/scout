@@ -1,0 +1,126 @@
+{
+  "Comment": "scout multi-agent research pipeline: plan -> research (parallel) -> verify -> synthesize",
+  "StartAt": "SetPlanning",
+  "States": {
+    "SetPlanning": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${JobsTable}",
+        "Key": { "pk": { "S.$": "States.Format('JOB#{}', $.job_id)" } },
+        "UpdateExpression": "SET #s = :s",
+        "ExpressionAttributeNames": { "#s": "status" },
+        "ExpressionAttributeValues": { ":s": { "S": "PLANNING" } }
+      },
+      "ResultPath": null,
+      "Next": "Planner"
+    },
+    "Planner": {
+      "Type": "Task",
+      "Resource": "${PlannerFunctionArn}",
+      "Retry": [
+        { "ErrorEquals": ["States.ALL"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2.0 }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed", "ResultPath": "$.error" }],
+      "Next": "SetResearching"
+    },
+    "SetResearching": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${JobsTable}",
+        "Key": { "pk": { "S.$": "States.Format('JOB#{}', $.job_id)" } },
+        "UpdateExpression": "SET #s = :s",
+        "ExpressionAttributeNames": { "#s": "status" },
+        "ExpressionAttributeValues": { ":s": { "S": "RESEARCHING" } }
+      },
+      "ResultPath": null,
+      "Next": "ResearchMap"
+    },
+    "ResearchMap": {
+      "Type": "Map",
+      "ItemsPath": "$.subtasks",
+      "MaxConcurrency": 3,
+      "ItemSelector": {
+        "job_id.$": "$.job_id",
+        "quality.$": "$.quality",
+        "subtask.$": "$$.Map.Item.Value"
+      },
+      "ItemProcessor": {
+        "ProcessorConfig": { "Mode": "INLINE" },
+        "StartAt": "Worker",
+        "States": {
+          "Worker": {
+            "Type": "Task",
+            "Resource": "${WorkerFunctionArn}",
+            "Retry": [
+              { "ErrorEquals": ["States.ALL"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2.0 }
+            ],
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.research",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed", "ResultPath": "$.error" }],
+      "Next": "SetVerifying"
+    },
+    "SetVerifying": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${JobsTable}",
+        "Key": { "pk": { "S.$": "States.Format('JOB#{}', $.job_id)" } },
+        "UpdateExpression": "SET #s = :s",
+        "ExpressionAttributeNames": { "#s": "status" },
+        "ExpressionAttributeValues": { ":s": { "S": "VERIFYING" } }
+      },
+      "ResultPath": null,
+      "Next": "Critic"
+    },
+    "Critic": {
+      "Type": "Task",
+      "Resource": "${CriticFunctionArn}",
+      "Retry": [
+        { "ErrorEquals": ["States.ALL"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2.0 }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed", "ResultPath": "$.error" }],
+      "Next": "SetSynthesizing"
+    },
+    "SetSynthesizing": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${JobsTable}",
+        "Key": { "pk": { "S.$": "States.Format('JOB#{}', $.job_id)" } },
+        "UpdateExpression": "SET #s = :s",
+        "ExpressionAttributeNames": { "#s": "status" },
+        "ExpressionAttributeValues": { ":s": { "S": "SYNTHESIZING" } }
+      },
+      "ResultPath": null,
+      "Next": "Synthesizer"
+    },
+    "Synthesizer": {
+      "Type": "Task",
+      "Resource": "${SynthesizerFunctionArn}",
+      "Comment": "Writes the finished brief and marks the job DONE in DynamoDB.",
+      "Retry": [
+        { "ErrorEquals": ["States.ALL"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2.0 }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "MarkFailed", "ResultPath": "$.error" }],
+      "End": true
+    },
+    "MarkFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${JobsTable}",
+        "Key": { "pk": { "S.$": "States.Format('JOB#{}', $.job_id)" } },
+        "UpdateExpression": "SET #s = :s",
+        "ExpressionAttributeNames": { "#s": "status" },
+        "ExpressionAttributeValues": { ":s": { "S": "FAILED" } }
+      },
+      "ResultPath": null,
+      "End": true
+    }
+  }
+}

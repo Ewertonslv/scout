@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  scout — serverless multi-agent research pipeline.
+  API Gateway -> Lambda (FastAPI) -> Step Functions -> Bedrock agents -> DynamoDB.
+  Designed to sit inside the AWS free tier (see README cost section).
+
+Parameters:
+  ModelFast:
+    Type: String
+    Default: amazon.nova-lite-v1:0
+    Description: Default (cheap) Bedrock model id used by the agents.
+  ModelQuality:
+    Type: String
+    Default: anthropic.claude-haiku-4-5
+    Description: Opt-in "quality mode" Bedrock model id.
+  MaxRunsPerDay:
+    Type: Number
+    Default: 100
+    Description: Daily run cap (Bedrock cost guardrail).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64] # Graviton — cheaper GB-s
+    Timeout: 60
+    MemorySize: 512
+    Layers: [!Ref DependenciesLayer]
+    Environment:
+      Variables:
+        JOBS_TABLE: !Ref JobsTable
+        MODEL_FAST: !Ref ModelFast
+        MODEL_QUALITY: !Ref ModelQuality
+        MAX_RUNS_PER_DAY: !Ref MaxRunsPerDay
+
+Resources:
+  # --- Persistence -----------------------------------------------------------
+  JobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST # on-demand, scales to zero
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # --- Shared dependency layer ----------------------------------------------
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: scout-deps
+      ContentUri: layer/
+      CompatibleRuntimes: [python3.12]
+      CompatibleArchitectures: [arm64]
+    Metadata:
+      BuildMethod: python3.12
+
+  # --- API Lambda (FastAPI + Mangum) ----------------------------------------
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: api.handler.handler
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref ResearchStateMachine
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: states:StartExecution
+              Resource: !Ref ResearchStateMachine
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      # Low default throttle so a bot can't run up Bedrock cost.
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 2
+        ThrottlingBurstLimit: 5
+
+  # --- Agent Lambdas ---------------------------------------------------------
+  PlannerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: agents.planner.handler
+      Policies: [!Ref BedrockInvokePolicy]
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: agents.worker.handler
+      Policies: [!Ref BedrockInvokePolicy]
+  CriticFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: agents.critic.handler
+      Policies: [!Ref BedrockInvokePolicy]
+  SynthesizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: agents.synthesizer.handler
+      Policies:
+        - !Ref BedrockInvokePolicy
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+
+  # --- Shared managed policy: invoke Bedrock models --------------------------
+  BedrockInvokePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: [bedrock:InvokeModel]
+            Resource: "*"
+
+  # --- Orchestration ---------------------------------------------------------
+  ResearchStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD # 4,000 free state transitions/month
+      DefinitionUri: src/statemachine/pipeline.asl.json
+      DefinitionSubstitutions:
+        JobsTable: !Ref JobsTable
+        PlannerFunctionArn: !GetAtt PlannerFunction.Arn
+        WorkerFunctionArn: !GetAtt WorkerFunction.Arn
+        CriticFunctionArn: !GetAtt CriticFunction.Arn
+        SynthesizerFunctionArn: !GetAtt SynthesizerFunction.Arn
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref PlannerFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref WorkerFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref CriticFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref SynthesizerFunction }
+        - DynamoDBCrudPolicy: { TableName: !Ref JobsTable }
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the HTTP API
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  JobsTableName:
+    Value: !Ref JobsTable
+  StateMachineArn:
+    Value: !Ref ResearchStateMachine

@@ -1,0 +1,15 @@
+{
+  "name": "scout-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing scout's multi-agent research pipeline as a tool",
+  "type": "module",
+  "bin": { "scout-mcp": "index.js" },
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node index.js" },
+  "keywords": ["mcp", "model-context-protocol", "aws", "bedrock", "agents"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  }
+}

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# SAM / AWS
+.aws-sam/
+samconfig.local.toml
+
+# Node (MCP server + frontend tooling)
+node_modules/
+
+# Local env / secrets
+.env
+*.local
+
+# OS
+.DS_Store
+Thumbs.db

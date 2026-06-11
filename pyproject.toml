@@ -1,0 +1,24 @@
+[project]
+name = "scout"
+version = "0.1.0"
+description = "Serverless multi-agent research pipeline on AWS"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+# src layout: make core/agents/api importable without a `src.` prefix,
+# matching the Lambda CodeUri (src/).
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+ignore_missing_imports = true
