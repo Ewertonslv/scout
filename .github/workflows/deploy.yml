@@ -3,10 +3,12 @@ name: deploy
 # Keyless deploy: GitHub Actions assumes an AWS IAM role via OIDC.
 # No long-lived access keys are stored in the repo — only the role ARN, which is
 # useless without the trust policy scoped to this repo. See README "CI/CD".
+#
+# Manual trigger only: deploying requires the AWS_DEPLOY_ROLE_ARN secret and an
+# OIDC role provisioned in the target account. Run it from the Actions tab once
+# that infrastructure exists.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
