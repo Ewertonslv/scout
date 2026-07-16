@@ -22,6 +22,11 @@
 
 <!-- TODO after deploy: add the CloudFront URL and a docs/demo.gif above -->
 
+<p align="center">
+  <img alt="scout demo — the five-agent pipeline returning a cited brief" src="docs/demo.png" width="720" />
+  <br/><em>The bundled SPA running <code>python demo.py</code> — no AWS, $0.</em>
+</p>
+
 ---
 
 **scout** is a serverless, multi-agent research pipeline. You submit a topic; an orchestrator
