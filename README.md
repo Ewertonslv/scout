@@ -16,12 +16,11 @@
 </p>
 
 <p align="center">
-  <a href="#"><b>▶ Live Demo</b></a> &nbsp;·&nbsp;
-  <a href="#"><b>📺 30s Demo (GIF)</b></a>
+  <a href="#run-the-demo-locally--no-aws-0"><b>▶ Run the demo locally (no AWS, $0)</b></a> &nbsp;·&nbsp;
+  <a href="docs/sample-brief.md"><b>📄 Sample brief</b></a>
 </p>
 
-<!-- TODO after deploy: replace the two links above with the CloudFront URL and a docs/demo.gif -->
-<!-- TODO: add docs/demo.gif here once recorded -->
+<!-- TODO after deploy: add the CloudFront URL and a docs/demo.gif above -->
 
 ---
 
@@ -77,7 +76,8 @@ graph in the AWS console — see `docs/`.
 | **Event-driven / async** | Job-id submit + polling; Step Functions service integrations write status to DynamoDB |
 | **CI/CD** | [`.github/workflows`](.github/workflows) — lint + tests on PR, **keyless OIDC deploy** on merge |
 | **Cost engineering** | Per-run token caps, daily run cap, low API throttle — designed for **~$0/month** |
-| **Testing** | 17 tests, [`pytest` + `moto`](tests/) — the suite runs offline with no AWS calls |
+| **Testing** | 20 tests, [`pytest` + `moto`](tests/) — the suite runs offline with no AWS calls |
+| **Runs with zero setup** | `python demo.py` runs the full pipeline offline (stub model + in-memory store) — no AWS, no cost |
 | **MCP** | [`mcp/`](mcp/) — the pipeline re-exposed as a Model Context Protocol tool |
 
 ## 💸 Cost — built to stay on the free tier
@@ -100,18 +100,36 @@ alarm before first use. Tear it all down with `sam delete`.
 
 ## Quickstart
 
-### Run locally (no AWS, synchronous pipeline)
+### Run the demo locally — no AWS, $0
+
+The fastest way to see scout work. `SCOUT_OFFLINE` swaps Bedrock for a deterministic in-process
+stub and DynamoDB for an in-memory store, so the **entire five-agent pipeline runs on your
+laptop with no AWS account, no credentials, and no cost** — then serves the SPA and API together:
 
 ```bash
-python -m venv .venv && . .venv/Scripts/activate   # Windows
+python -m venv .venv && . .venv/Scripts/activate   # Windows (use bin/activate on macOS/Linux)
 pip install -r requirements-dev.txt
-pytest -q                                           # 17 tests, fully offline
+python demo.py                                      # -> http://127.0.0.1:8000
+```
+
+Open the page, submit a topic, and watch the planner → workers → critic → synthesizer hand back
+a cited brief (see [`docs/sample-brief.md`](docs/sample-brief.md) for example output). The stub
+produces realistic *shape*, not verified facts — it exists so the pipeline, API, and UI are
+fully exercisable offline. Swap in real Bedrock by deploying (below) or unsetting `SCOUT_OFFLINE`
+with AWS credentials configured.
+
+```bash
+pytest -q                                           # 20 tests, fully offline
+```
+
+### Run against real Bedrock (local)
+
+```bash
 uvicorn api.app:app --app-dir src --reload          # http://localhost:8000/docs
 ```
 
-With no `STATE_MACHINE_ARN` set, `POST /jobs` runs the whole pipeline in-process and returns
-the brief directly — handy for development. (Real Bedrock calls need AWS credentials + model
-access; the test suite uses a fake client.)
+With no `STATE_MACHINE_ARN` set, `POST /jobs` runs the whole pipeline in-process and returns the
+brief directly. Real Bedrock calls need AWS credentials + per-model access enabled in `us-east-1`.
 
 ### Deploy to AWS
 
@@ -159,6 +177,7 @@ then store its ARN as the `AWS_DEPLOY_ROLE_ARN` secret.
 
 ```
 scout/
+├── demo.py                    # one-command offline demo (no AWS, $0)
 ├── template.yaml              # SAM — all infrastructure
 ├── src/
 │   ├── api/                   # FastAPI + Mangum (submit, status)
@@ -174,6 +193,7 @@ scout/
 ## Roadmap
 
 - [x] Phases 0–2 — agents, orchestration, async job API, tests
+- [x] Offline demo — full pipeline runs on a laptop with no AWS (`python demo.py`)
 - [ ] Phase 3 — host the SPA on S3 + CloudFront; record the demo GIF
 - [ ] Phase 4 — wire the OIDC deploy role; first live deploy
 - [ ] Phase 5 — Budgets alarm, observability dashboard screenshot

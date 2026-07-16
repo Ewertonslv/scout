@@ -6,6 +6,7 @@ Lambdas reuse one instance across warm invocations; tests override these via
 from __future__ import annotations
 
 from .bedrock import BedrockClient
+from .config import CONFIG
 from .repo import JobRepository
 
 _client: BedrockClient | None = None
@@ -15,14 +16,24 @@ _repo: JobRepository | None = None
 def get_client() -> BedrockClient:
     global _client
     if _client is None:
-        _client = BedrockClient()
+        if CONFIG.offline:
+            from .offline import OfflineBedrockClient
+
+            _client = OfflineBedrockClient()
+        else:
+            _client = BedrockClient()
     return _client
 
 
 def get_repo() -> JobRepository:
     global _repo
     if _repo is None:
-        _repo = JobRepository()
+        if CONFIG.offline:
+            from .offline import InMemoryJobRepository
+
+            _repo = InMemoryJobRepository()
+        else:
+            _repo = JobRepository()
     return _repo
 
 

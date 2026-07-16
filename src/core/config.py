@@ -17,6 +17,10 @@ class Config:
     jobs_table: str = os.environ.get("JOBS_TABLE", "scout-jobs")
     state_machine_arn: str = os.environ.get("STATE_MACHINE_ARN", "")
 
+    # Offline demo mode: run the whole pipeline in-process with a deterministic
+    # stub model and an in-memory job store — no AWS, no Bedrock, zero cost.
+    offline: bool = os.environ.get("SCOUT_OFFLINE", "").lower() in {"1", "true", "yes"}
+
     # --- Bedrock models (Converse API ids) ---
     # Default = Amazon Nova Lite (ultra cheap). "Quality mode" = Claude Haiku 4.5.
     model_fast: str = os.environ.get("MODEL_FAST", "amazon.nova-lite-v1:0")
