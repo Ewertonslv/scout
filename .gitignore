@@ -22,3 +22,6 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+# Internal audit (keep local, do not publish)
+OBSERVACOES-scout.md
