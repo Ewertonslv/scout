@@ -1,13 +1,14 @@
-# docs — visual assets
+# docs
 
-Drop the recruiter-facing visuals here and reference them from the root README:
+What is here today:
 
-- **`demo.gif`** — a 15–20s screen recording: type a topic → the agent stages light up
-  in parallel → the cited brief renders. This is the single most persuasive asset; record it
-  once the SPA is live (Phase 3).
-- **`stepfunctions-graph.png`** — a screenshot of a completed execution in the Step Functions
-  console. It *visually proves* the multi-agent fan-out (plan → parallel Map → verify → synthesize).
-- **`architecture.png`** — optional exported render of the Mermaid diagram in the README, for
-  link previews and slides.
+- **`demo.png`**: screenshot of the SPA served by `python demo.py` (offline mode).
+- **`sample-brief.md`**: example brief produced by the offline stub, to show the output shape.
+
+Planned once the stack is deployed (see the roadmap in the root README):
+
+- **`demo.gif`**: a short screen recording, topic in, stages light up, cited brief out.
+- **`stepfunctions-graph.png`**: a completed execution in the Step Functions console, showing
+  the plan, parallel Map, verify, synthesize fan-out.
 
 Keep these as committed files (not hotlinks) so they never rot.

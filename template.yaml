@@ -128,7 +128,11 @@ Resources:
         Statement:
           - Effect: Allow
             Action: [bedrock:InvokeModel]
-            Resource: "*"
+            # Foundation models plus inference profiles (Converse routes some
+            # models through a profile, which must then be allowed as well).
+            Resource:
+              - arn:aws:bedrock:*::foundation-model/*
+              - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*
 
   # --- Orchestration ---------------------------------------------------------
   ResearchStateMachine:
