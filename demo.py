@@ -4,7 +4,7 @@
 
 It forces ``SCOUT_OFFLINE`` (deterministic stub model + in-memory job store),
 then serves the bundled SPA and the API together so the frontend — which calls
-``<origin>/api/*`` — works unmodified. Submit a topic and watch the five-agent
+``<origin>/api/*`` — works unmodified. Submit a topic and watch the four-stage
 pipeline hand back a cited brief.
 
 This is the demo path recruiters click; the same agents run on real Bedrock +

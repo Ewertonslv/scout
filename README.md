@@ -1,8 +1,8 @@
 <h1 align="center">scout</h1>
 
 <p align="center">
-  <em>Ask a question. Five AI agents research it in parallel on AWS and hand you back a cited brief —<br/>
-  running on the AWS free tier, deployed with one command.</em>
+  <em>Ask a question. Four kinds of AI agent (planner, parallel workers, critic, synthesizer) research it on AWS<br/>
+  and hand you back a cited brief. Serverless, sized for the free tier, deployed with <code>sam deploy</code>.</em>
 </p>
 
 <p align="center">
@@ -20,11 +20,9 @@
   <a href="docs/sample-brief.md"><b>📄 Sample brief</b></a>
 </p>
 
-<!-- TODO after deploy: add the CloudFront URL and a docs/demo.gif above -->
-
 <p align="center">
-  <img alt="scout demo — the five-agent pipeline returning a cited brief" src="docs/demo.png" width="720" />
-  <br/><em>The bundled SPA running <code>python demo.py</code> — no AWS, $0.</em>
+  <img alt="scout demo: the four-stage pipeline returning a cited brief" src="docs/demo.png" width="720" />
+  <br/><em>The bundled SPA running <code>python demo.py</code>, no AWS, $0.</em>
 </p>
 
 ---
@@ -40,15 +38,13 @@ It's also exposed as an **[MCP server](#mcp-server)**, so any Model Context Prot
 
 ```mermaid
 flowchart TD
-    U([Browser / MCP client]) -->|HTTPS| CF[CloudFront]
-    CF -->|/| S3[(S3 — static SPA)]
-    CF -->|/api/*| API[API Gateway HTTP API]
+    U([Browser / MCP client]) -->|HTTPS| API[API Gateway HTTP API]
     API --> L[API Lambda<br/>FastAPI + Mangum]
     L -->|reserve slot + create job| DB[(DynamoDB<br/>jobs + daily counter)]
     L -->|StartExecution| SF[Step Functions]
 
     subgraph SF[Step Functions — Standard]
-      P[Planner] --> M{{Map · parallel}}
+      P[Planner] --> M{{Map · MaxConcurrency 3}}
       M --> W1[Worker]
       M --> W2[Worker]
       M --> W3[Worker]
@@ -66,9 +62,11 @@ flowchart TD
     L -->|poll status| DB
 ```
 
-Each box is a real, independently-deployed Lambda. The fan-out is genuine (a Step Functions
-`Map` state runs the workers in parallel), and the orchestration is visible as an execution
-graph in the AWS console — see `docs/`.
+Each box is a real, independently-deployed Lambda. The fan-out is genuine: a Step Functions
+`Map` state runs up to three workers at once (`MaxConcurrency: 3` in
+[`pipeline.asl.json`](src/statemachine/pipeline.asl.json)). The template deploys the API and
+the pipeline only; the SPA in [`frontend/`](frontend/) is served by `demo.py` locally and has
+no hosting in `template.yaml` yet (see roadmap).
 
 ## What this demonstrates
 
@@ -79,7 +77,7 @@ graph in the AWS console — see `docs/`.
 | **Multi-agent orchestration** | [`pipeline.asl.json`](src/statemachine/pipeline.asl.json) — plan → parallel research → verify → synthesize |
 | **GenAI / Amazon Bedrock** | [`core/bedrock.py`](src/core/bedrock.py) — Converse API, one-flag model swap (Nova ↔ Claude) |
 | **Event-driven / async** | Job-id submit + polling; Step Functions service integrations write status to DynamoDB |
-| **CI/CD** | [`.github/workflows`](.github/workflows) — lint + tests on PR, **keyless OIDC deploy** on merge |
+| **CI/CD** | [`.github/workflows`](.github/workflows): lint + tests on every PR; `deploy.yml` is a manual (`workflow_dispatch`) OIDC deploy that has not been run yet |
 | **Cost engineering** | Per-run token caps, daily run cap, low API throttle — designed for **~$0/month** |
 | **Testing** | 20 tests, [`pytest` + `moto`](tests/) — the suite runs offline with no AWS calls |
 | **Runs with zero setup** | `python demo.py` runs the full pipeline offline (stub model + in-memory store) — no AWS, no cost |
@@ -108,8 +106,8 @@ alarm before first use. Tear it all down with `sam delete`.
 ### Run the demo locally — no AWS, $0
 
 The fastest way to see scout work. `SCOUT_OFFLINE` swaps Bedrock for a deterministic in-process
-stub and DynamoDB for an in-memory store, so the **entire five-agent pipeline runs on your
-laptop with no AWS account, no credentials, and no cost** — then serves the SPA and API together:
+stub and DynamoDB for an in-memory store, so the **entire four-stage pipeline runs on your
+laptop with no AWS account, no credentials, and no cost**, then serves the SPA and API together:
 
 ```bash
 python -m venv .venv && . .venv/Scripts/activate   # Windows (use bin/activate on macOS/Linux)
@@ -144,7 +142,9 @@ sam deploy --guided          # first time; afterwards just `sam deploy`
 ```
 
 Requires the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
-Outputs the API URL. Point the SPA in [`frontend/`](frontend/) at it (or front both with CloudFront).
+Outputs the API URL. Point `API_BASE` in [`frontend/index.html`](frontend/index.html) at it;
+hosting the SPA next to the API is still on the roadmap. This stack has not been deployed to a
+live account yet, so treat the cost table above as an estimate, not a bill.
 
 ## How the agents work
 
@@ -162,21 +162,28 @@ at a glance.
 
 ## MCP server
 
+The server lives in [`mcp/index.js`](mcp/index.js) and is not published to npm (the `scout-mcp`
+name on the registry belongs to someone else; do not `npx` it). Run it from the checkout:
+
 ```bash
 cd mcp && npm install
-SCOUT_API_BASE="https://<your-api>.execute-api.us-east-1.amazonaws.com" npx scout-mcp
+SCOUT_API_BASE="https://<your-api>.execute-api.us-east-1.amazonaws.com" node index.js
 ```
 
-Exposes a single `research(topic, quality?)` tool over stdio. Add it to any MCP client to get
-cited briefs without leaving your editor.
+`SCOUT_API_BASE` defaults to `http://localhost:8000`, so with `python demo.py` running you can
+skip the variable. Exposes a single `research(topic, quality?)` tool over stdio. Point your MCP
+client at `node /path/to/scout/mcp/index.js` to get cited briefs without leaving your editor.
 
-## CI/CD — keyless deploys
+## CI/CD
 
-`deploy.yml` assumes an AWS IAM role via **GitHub OIDC** — no long-lived access keys live in
-the repo, only a role ARN that is useless without the trust policy scoped to this repository.
-One-time setup: create an IAM OIDC provider for `token.actions.githubusercontent.com` and a
-least-privilege deploy role whose trust policy pins `repo:Ewertonslv/scout:ref:refs/heads/main`,
-then store its ARN as the `AWS_DEPLOY_ROLE_ARN` secret.
+`ci.yml` runs ruff, mypy and the test suite on every push and PR, plus `sam validate --lint`.
+
+`deploy.yml` is a **manual** workflow (`workflow_dispatch`) that assumes an AWS IAM role via
+GitHub OIDC, so no long-lived access keys live in the repo. It has not been run yet: the OIDC
+provider and deploy role still need to be created in the target account. One-time setup: create
+an IAM OIDC provider for `token.actions.githubusercontent.com` and a least-privilege deploy role
+whose trust policy pins `repo:Ewertonslv/scout:ref:refs/heads/main`, then store its ARN as the
+`AWS_DEPLOY_ROLE_ARN` secret and trigger the workflow from the Actions tab.
 
 ## Project layout
 
@@ -190,19 +197,19 @@ scout/
 │   ├── core/                  # bedrock, budget, repo, models, prompts, pipeline
 │   └── statemachine/          # pipeline.asl.json (the orchestration)
 ├── frontend/                  # single-file demo SPA
-├── mcp/                       # MCP server wrapper (Node)
+├── mcp/                       # MCP server wrapper (Node, run with `node index.js`)
 ├── tests/                     # pytest + moto (offline)
-└── .github/workflows/         # ci.yml, deploy.yml (OIDC)
+└── .github/workflows/         # ci.yml (lint + tests), deploy.yml (manual OIDC deploy)
 ```
 
 ## Roadmap
 
-- [x] Phases 0–2 — agents, orchestration, async job API, tests
-- [x] Offline demo — full pipeline runs on a laptop with no AWS (`python demo.py`)
-- [ ] Phase 3 — host the SPA on S3 + CloudFront; record the demo GIF
-- [ ] Phase 4 — wire the OIDC deploy role; first live deploy
-- [ ] Phase 5 — Budgets alarm, observability dashboard screenshot
-- [ ] Phase 6 — retrieval-grounded citations (DynamoDB vector store) + publish `scout-mcp` to npm
+- [x] Phases 0 to 2: agents, orchestration, async job API, tests
+- [x] Offline demo: full pipeline runs on a laptop with no AWS (`python demo.py`)
+- [ ] Phase 3: host the SPA (S3 + CloudFront) in `template.yaml`; record the demo GIF
+- [ ] Phase 4: wire the OIDC deploy role; first live deploy (`deploy.yml` exists but has never run)
+- [ ] Phase 5: Budgets alarm, observability dashboard screenshot
+- [ ] Phase 6: retrieval-grounded citations (DynamoDB vector store); publish the MCP server to npm under a free name (`scout-mcp` is taken)
 
 ## License
 

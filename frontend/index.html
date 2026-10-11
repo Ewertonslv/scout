@@ -4,7 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>scout — multi-agent research</title>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.1.0/lib/marked.umd.min.js"
+          integrity="sha512-vyMZJAex6630R9bwuWSFTqe36izDPqqG2Poyh/bSPvgUSQiMhsVrwXtbYGpg4TSFfWJvXKuQ3cddFwv+hA7Psw=="
+          crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.16/purify.min.js"
+          integrity="sha512-flQmhkXNRQ3iUfvtdCobtpMjCb6kE+zLnTiAulAQJ3WykVfy84JvCMOo6vhwWXHTXjR25h9Zj+LyGFRWKjRoag=="
+          crossorigin="anonymous"></script>
   <style>
     :root { --bg:#0b0f17; --panel:#141a26; --accent:#5b8cff; --muted:#8a93a6; --ok:#3ad29f; }
     * { box-sizing: border-box; }
@@ -36,7 +41,7 @@
 <body>
   <div class="wrap">
     <h1>scout</h1>
-    <p class="tagline">Ask a question. Five AI agents research it in parallel on AWS and hand you back a cited brief.</p>
+    <p class="tagline">Ask a question. A planner, parallel research workers, a critic and a synthesizer hand you back a cited brief.</p>
 
     <form id="form">
       <input id="topic" type="text" placeholder="e.g. trade-offs of serverless vs containers" required minlength="3" />
@@ -76,7 +81,8 @@
 
     function renderBrief(brief) {
       briefEl.hidden = false;
-      briefEl.innerHTML = marked.parse(brief.markdown || "");
+      // The brief is model output; sanitize before it touches the DOM.
+      briefEl.innerHTML = DOMPurify.sanitize(marked.parse(brief.markdown || ""));
     }
 
     async function poll(jobId) {

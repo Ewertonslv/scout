@@ -23,6 +23,8 @@ class Config:
 
     # --- Bedrock models (Converse API ids) ---
     # Default = Amazon Nova Lite (ultra cheap). "Quality mode" = Claude Haiku 4.5.
+    # The quality id has no version suffix; check it against the Bedrock model
+    # catalog (and whether it needs an inference profile) before the first deploy.
     model_fast: str = os.environ.get("MODEL_FAST", "amazon.nova-lite-v1:0")
     model_quality: str = os.environ.get("MODEL_QUALITY", "anthropic.claude-haiku-4-5")
 
